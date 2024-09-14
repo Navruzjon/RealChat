@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Chat</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <a href="logout">Logout</a>
+</head>
+<body>
+    <h1>Welcome to the chat, {{ username }}</h1>
+    <div id="chat-window">
+        {% for message in messages %}
+        <p><strong>{{ message.username }}:</strong> {{ message.content }}</p>
+    {% endfor %}
+    </div>
+    <input id="message" placeholder="Enter message..." autocomplete="off" >
+    <button onclick="sendMessage()">Send</button>
+
+    <script type="text/javascript">
+        // Connect to SocketIO
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+        // Send message to server
+        function sendMessage() {
+            var message = document.getElementById("message").value;
+            socket.send(message);
+            document.getElementById("message").value = '';
+        }
+
+        // Receive message from server and update the chat window
+        socket.on('message', function(data) {
+            var chatWindow = document.getElementById("chat-window");
+            var newMessage = document.createElement("p");
+            newMessage.innerHTML = "<strong>" + data.username + ":</strong> " + data.msg;
+            chatWindow.appendChild(newMessage);
+        });
+        //This is for Enter key sending message
+        var textBox = document.getElementById("message");
+        textBox.addEventListener("keyup", function (event) {
+
+        // Checking if key pressed is ENTER or not
+        // if the key pressed is ENTER
+        // click listener on button is called
+        if (event.keyCode == 13) {
+            sendMessage()
+            //button.click();
+        }
+        });
+    </script>
+</body>
+</html>

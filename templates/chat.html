@@ -2,19 +2,35 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real-Time Chat</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <a href="logout">Logout</a>
 </head>
 <body>
-    <h1>Welcome to the chat, {{ username }}</h1>
-    <div id="chat-window">
-        {% for message in messages %}
-        <p><strong>{{ message.username }}:</strong> {{ message.content }}</p>
-    {% endfor %}
+    <!-- Navbar with logout -->
+    <nav class="navbar navbar-light bg-light">
+        <a class="navbar-brand" href="#">TeaTok</a>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Logout</a>
+    </nav>
+
+    <div class="container">
+        <h1 class="mt-4">Welcome to the chat, {{ username }}</h1>
+        
+        <!-- Chat Window -->
+        <div id="chat-window" class="border p-3 mb-3" style="height: 300px; overflow-y: scroll;">
+            <!-- Loop through existing messages -->
+            {% for message in messages %}
+                <p><strong>{{ message.username }}:</strong> {{ message.content }}</p>
+            {% endfor %}
+        </div>
+
+        <!-- Message Input -->
+        <div class="form-inline">
+            <input id="message" class="form-control mr-2" style="width: 80%;" placeholder="Enter message..." autocomplete="off">
+            <button class="btn btn-primary" onclick="sendMessage()">Send</button>
+        </div>
     </div>
-    <input id="message" placeholder="Enter message..." autocomplete="off" >
-    <button onclick="sendMessage()">Send</button>
 
     <script type="text/javascript">
         // Connect to SocketIO
@@ -23,8 +39,13 @@
         // Send message to server
         function sendMessage() {
             var message = document.getElementById("message").value;
-            socket.send(message);
-            document.getElementById("message").value = '';
+            if (message.trim() !== "") {
+                socket.emit('message', {
+                    'msg': message,
+                    'username': '{{ username }}'  // Send the username along with the message
+                });
+                document.getElementById("message").value = '';
+            }
         }
 
         // Receive message from server and update the chat window
@@ -33,18 +54,16 @@
             var newMessage = document.createElement("p");
             newMessage.innerHTML = "<strong>" + data.username + ":</strong> " + data.msg;
             chatWindow.appendChild(newMessage);
-        });
-        //This is for Enter key sending message
-        var textBox = document.getElementById("message");
-        textBox.addEventListener("keyup", function (event) {
 
-        // Checking if key pressed is ENTER or not
-        // if the key pressed is ENTER
-        // click listener on button is called
-        if (event.keyCode == 13) {
-            sendMessage()
-            //button.click();
-        }
+            // Auto scroll to the bottom of the chat window
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        });
+
+        // Add event listener to send message on pressing Enter key
+        document.getElementById("message").addEventListener("keyup", function(event) {
+            if (event.keyCode === 13) {  // If Enter key is pressed
+                sendMessage();  // Call the sendMessage function
+            }
         });
     </script>
 </body>

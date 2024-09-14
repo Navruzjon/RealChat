@@ -7,13 +7,22 @@ from flask_bcrypt import Bcrypt
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_migrate import Migrate
 from flask_socketio import SocketIO, send, emit
+import os
+from flask_wtf import FlaskForm
+from wtforms import StringField, PasswordField, SubmitField
+from wtforms.validators import DataRequired, Email, EqualTo
 
 app = Flask(__name__)
 #if __name__ == '__main__':
 #    app.run(host="0.0.0.0", port=5002, debug=True)
 # Set the secret key and configure the database
-app.config['SECRET_KEY'] = 'supersecretkey'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+#app.config['SECRET_KEY'] = 'supersecretkey'
+#app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'default_secret_key')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///site.db')
+##You can set environment variables like this in your environment:
+##export SECRET_KEY='your_production_secret_key'
+##export DATABASE_URL='your_database_url'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 socketio = SocketIO(app)
@@ -21,6 +30,13 @@ migrate = Migrate(app, db)  # Initialize Flask-Migrate with the app and db
 bcrypt = Bcrypt(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
+
+class RegistrationForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    email = StringField('Email', validators=[DataRequired(), Email()])
+    password = PasswordField('Password', validators=[DataRequired()])
+    confirm_password = PasswordField('Confirm Password', validators=[DataRequired(), EqualTo('password')])
+    submit = SubmitField('Sign Up')
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -93,6 +109,22 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 ##SocketIO part
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+
+users_sessions = {}
+
+@socketio.on('connect')
+def handle_connect():
+    users_sessions[current_user.username] = request.sid
+    print(f'{current_user.username} connected with session id: {request.sid}')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    if current_user.username in users_sessions:
+        del users_sessions[current_user.username]
+    print(f'{current_user.username} has disconnected')
+
+
 # Chat model (Optional for message history)
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -103,25 +135,33 @@ class Message(db.Model):
 @app.route('/')
 @login_required
 def index():
-    messages = Message.query.all()
-    return render_template('chat.html', username=current_user.username)
+    # Fetch all messages from the database ordered by their ID (you can change this as needed)
+    messages = Message.query.order_by(Message.id.asc()).all()  # Fetch messages in order
+    # Pass the messages to the chat.html template
+    return render_template('chat.html', username=current_user.username, messages=messages)
 
 # SocketIO event for real-time messages
 @socketio.on('message')
-def handle_message(msg):
-    print(f"Message: {msg}")
-    # Save message to database
-    message = Message(username=current_user.username, content=msg)
+def handle_message(data):
+    print(f"Message: {data}")
+    # Save only the message content and username to the database
+    message = Message(username=data['username'], content=data['msg'])
     db.session.add(message)
     db.session.commit()
     
     # Broadcast message to all clients
-    emit('message', {'username': current_user.username, 'msg': msg}, broadcast=True)
-
+    emit('message', {'username': data['username'], 'msg': data['msg']}, broadcast=True)
+    
 @socketio.on('private_message')
 def handle_private_message(data):
-    recipient_session_id = users_sessions[data['recipient_username']]
-    emit('message', {'msg': data['msg']}, room=recipient_session_id)
+    recipient_username = data['recipient_username']
+    recipient_session_id = users_sessions.get(recipient_username)
+
+    if recipient_session_id:
+        emit('message', {'msg': data['msg'], 'from': current_user.username}, room=recipient_session_id)
+    else:
+        emit('message', {'msg': f"User {recipient_username} is not online."}, room=request.sid)
+
 ###You would need to maintain a mapping of connected users to their session IDs using something like users_sessions.
 @socketio.on('disconnect')
 def handle_disconnect():
